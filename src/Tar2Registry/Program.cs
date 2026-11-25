@@ -31,15 +31,21 @@ async Task<JsonElement?> RegistryGet(string path)
     return JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
 }
 
-IResult Html(string body) => Results.Content(body, "text/html; charset=utf-8");
-
 IResult LoginPage(string? error) => Html(
-    "<!doctype html><html lang=ru><meta charset=utf-8><title>Вход — tar2registry</title>"
-    + "<style>body{font-family:system-ui;max-width:340px;margin:12vh auto;padding:0 16px}"
-    + "input,button{width:100%;padding:10px;margin:6px 0;box-sizing:border-box}b{color:#c0392b}</style><body>"
+    "<!doctype html><html lang=ru><meta charset=utf-8><meta name=viewport content='width=device-width, initial-scale=1'>"
+    + "<title>Вход — tar2registry</title><style>"
+    + ":root{--bg:#0d1117;--panel:#161b22;--line:#30363d;--text:#e6edf3;--text-2:#9198a1;--blue:#58a6ff;--green:#238636;--red:#f85149}"
+    + "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);max-width:340px;margin:12vh auto;padding:0 16px;font-size:14px}"
+    + ".card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:24px 20px}"
+    + "h2{margin:0;font-size:16px}.hint{color:var(--text-2);font-size:13px;margin:2px 0 16px}"
+    + "input{width:100%;padding:8px 12px;margin:6px 0 14px;box-sizing:border-box;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--text);font-size:14px}"
+    + "input:focus{outline:2px solid var(--blue);outline-offset:-1px}"
+    + "button{width:100%;padding:8px;border:none;border-radius:6px;background:var(--green);color:#fff;font-size:14px;font-weight:500;cursor:pointer}"
+    + "button:hover{background:#2ea043}"
+    + "b{color:var(--red);display:block;margin-bottom:8px;font-weight:500;font-size:13px}</style><body>"
+    + "<div class=card><h2>Реестр образов</h2><p class=hint>Вход по паролю</p>"
     + (error == "1" ? "<b>Неверный пароль</b>" : "")
-    + "<h2>Вход</h2><form method=post>"
-    + "<input type=password name=password placeholder=Пароль autofocus><button>Войти</button></form></body></html>");
+    + "<form method=post><input type=password name=password placeholder=Пароль autofocus><button>Войти</button></form></div></body></html>");
 
 app.MapGet("/login", (string? e) => LoginPage(e));
 
@@ -81,7 +87,7 @@ app.MapGet("/api/catalog", async () =>
             : new List<string?>();
         repos.Add(new { name, tags });
     }
-    return Results.Json(new { registryHost, repos });
+    return Results.Json(new { registryHost, enableDelete, repos });
 });
 
 // ---------- разбор tar ----------

@@ -2,77 +2,186 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<title>tar2registry</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tar2registry — реестр образов</title>
 <style>
-  body{font-family:system-ui,sans-serif;max-width:900px;margin:0 auto;padding:16px;color:#222}
-  table{border-collapse:collapse;width:100%;margin-top:8px}
-  th,td{border:1px solid #ddd;padding:6px 10px;text-align:left;font-size:14px}
-  th{background:#f5f5f5}
-  code{background:#f5f5f5;padding:2px 5px;font-size:13px}
-  input[type=text],input[type=file]{padding:8px;margin:4px 0}
-  #filter{width:100%;box-sizing:border-box}
-  .ok{color:#1e7e34}.error{color:#c0392b}
-  fieldset{margin:24px 0;border:1px solid #ccc;border-radius:6px}
-  legend{font-weight:600;padding:0 8px}
-  .copy{cursor:pointer;color:#0056b3;text-decoration:underline;background:none;border:none;font-size:13px}
-  .msg{margin:8px 0;padding:8px 12px;border-radius:4px;background:#f8f8f8}
-  .spinner{display:inline-block;width:14px;height:14px;border:2px solid #999;border-top-color:#222;border-radius:50%;animation:r 1s linear infinite;vertical-align:-2px}
-  @keyframes r{to{transform:rotate(360deg)}}
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel-2:#21262d;
+  --accent:#238636; --accent-hover:#2ea043; --accent-text:#fff;
+  --btn-gray:#21262d; --btn-gray-hover:#30363d;
+  --text:#e6edf3; --text-2:#9198a1; --text-3:#6e7681;
+  --line:#30363d; --line-soft:#21262d;
+  --blue:#58a6ff; --red:#f85149; --green:#3fb950; --warn:#d29922;
+  --radius:6px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:980px;margin:0 auto;padding:24px 16px 48px}
+
+header{display:flex;align-items:center;gap:10px;padding-bottom:16px;border-bottom:1px solid var(--line);margin-bottom:20px;flex-wrap:wrap}
+.octo{width:28px;height:28px;fill:var(--text);flex-shrink:0}
+h1{font-size:18px;font-weight:600;margin:0}
+.host{color:var(--text-2);font-size:13px}
+.spacer{flex:1}
+.link{color:var(--text-2);font-size:13px;text-decoration:none;padding:5px 10px;border:1px solid var(--line);border-radius:var(--radius)}
+.link:hover{color:var(--text);background:var(--panel-2)}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius)}
+.card-header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.card-header h2{font-size:14px;font-weight:600;margin:0;flex:1}
+.badge{font-size:11px;padding:1px 8px;border:1px solid var(--line);border-radius:10px;color:var(--text-2)}
+.card-body{padding:16px}
+section{margin-bottom:16px}
+
+.search{width:100%;padding:6px 12px;border-radius:var(--radius);border:1px solid var(--line);
+  background:var(--bg);color:var(--text);font-size:14px;margin-bottom:12px}
+.search::placeholder{color:var(--text-3)}
+.search:focus{outline:2px solid var(--blue);outline-offset:-1px}
+
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-size:12px;font-weight:600;color:var(--text-2);padding:8px 16px;border-bottom:1px solid var(--line)}
+td{padding:12px 16px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+tbody tr{transition:background .1s}
+tbody tr:hover{background:#131920}
+.repo{font-weight:600;color:var(--blue);white-space:nowrap}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{display:inline-block;padding:0 8px;border-radius:20px;background:var(--panel-2);border:1px solid var(--line);
+  color:var(--text);font-size:12px;font-variant-numeric:tabular-nums;line-height:20px;transition:border-color .1s}
+.tag.link{cursor:pointer}
+.tag.link:hover{border-color:var(--red);color:var(--red)}
+.copy{background:var(--btn-gray);border:1px solid var(--line);color:var(--text);font-size:12px;
+  font-weight:500;cursor:pointer;padding:4px 10px;border-radius:var(--radius)}
+.copy:hover{background:var(--btn-gray-hover);border-color:var(--line-strong,#8b949e)}
+
+#msg{margin:0 0 16px}
+.msg{padding:10px 14px;border-radius:var(--radius);font-size:13px;display:flex;gap:8px;align-items:center;border:1px solid}
+.msg.ok{background:rgba(63,185,80,.1);color:var(--green);border-color:rgba(63,185,80,.4)}
+.msg.error{background:rgba(248,81,73,.1);color:var(--red);border-color:rgba(248,81,73,.4)}
+.msg.info{background:rgba(88,166,255,.1);color:var(--blue);border-color:rgba(88,166,255,.4)}
+
+.card-header.upload{background:var(--panel-2)}
+label{display:block;font-size:13px;font-weight:600;margin:14px 0 4px}
+label:first-of-type{margin-top:0}
+.hint{font-size:12px;color:var(--text-3);font-weight:400;margin-left:6px}
+input[type=text]{width:100%;padding:6px 12px;border-radius:var(--radius);border:1px solid var(--line);
+  background:var(--bg);color:var(--text);font-size:14px}
+input[type=text]:focus{outline:2px solid var(--blue);outline-offset:-1px}
+input[type=file]{color:var(--text-2);width:100%;font-size:13px}
+input[type=file]::file-selector-button{background:var(--btn-gray);color:var(--text);border:1px solid var(--line);
+  border-radius:var(--radius);padding:5px 12px;margin-right:12px;cursor:pointer;font-size:13px;font-weight:500}
+input[type=file]::file-selector-button:hover{background:var(--btn-gray-hover)}
+.found{font-size:12px;color:var(--text-2);margin:8px 0}
+.found code{background:var(--panel-2);border-radius:6px;padding:2px 6px;color:var(--text)}
+.btn{margin-top:16px;padding:7px 16px;border:none;border-radius:var(--radius);background:var(--accent);
+  color:var(--accent-text);font-size:14px;font-weight:500;cursor:pointer}
+.btn:hover{background:var(--accent-hover)}
+.btn:disabled{opacity:.6;cursor:default}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--accent-text);
+  border-top-color:transparent;border-radius:50%;animation:r 1s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes r{to{transform:rotate(360deg)}}
+
+@media (max-width:640px){th:nth-child(3),td:nth-child(3){display:none}}
+@media (prefers-reduced-motion:reduce){.spinner{animation:none}tbody tr{transition:none}}
 </style>
 </head>
 <body>
-<h2>Реестр <span id="host">…</span></h2>
-<div id="msg"></div>
+<div class="wrap">
+  <header>
+    <svg class="octo" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A7.995 7.995 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+    <h1>tar2registry</h1>
+    <span class="host" id="host"></span>
+    <span class="spacer"></span>
+    <a class="link" href="/logout">Выйти</a>
+  </header>
 
-<h3>Репозитории</h3>
-<input type="text" id="filter" placeholder="Фильтр: имя репозитория или метка (например, 2026.11)">
-<table id="tbl"><thead><tr><th>Репозиторий</th><th>Метки</th><th>Pull</th></tr></thead><tbody></tbody></table>
+  <div id="msg"></div>
 
-<fieldset>
-  <legend>Загрузить tar-образ</legend>
-  <form id="upl">
-    <p><input type="file" id="file" accept=".tar,.tar.gz,.tgz" required></p>
-    <p id="suggested" class="hidden">Найдено в архиве: <code id="found"></code></p>
-    <p>Путь в реестре (без адреса и метки, через «/»):<br>
-      <input type="text" id="repo" placeholder="monitor-proektov/backend" size="50" required></p>
-    <p>Метка:<br><input type="text" id="tag" placeholder="latest или 2026.ММ.ДД-коммит" size="50"></p>
-    <p><button type="submit">Загрузить</button></p>
-  </form>
-</fieldset>
+  <section class="card">
+    <div class="card-header">
+      <h2>Репозитории</h2>
+      <span class="badge" id="count"></span>
+    </div>
+    <div class="card-body">
+      <input type="text" class="search" id="filter" placeholder="Фильтр: имя репозитория или метка, например 2026.11">
+      <table>
+        <thead><tr><th>Репозиторий</th><th>Метки</th><th>Pull</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </section>
 
-<p><a href="/logout" id="logout">Выйти</a></p>
+  <section class="card">
+    <div class="card-header upload">
+      <h2>Загрузить образ из tar</h2>
+    </div>
+    <div class="card-body">
+      <form id="upl">
+        <input type="file" id="file" accept=".tar,.tar.gz,.tgz" required>
+        <p class="found hidden" id="suggested">Найдено в архиве: <code id="found"></code></p>
+        <label for="repo">Путь в реестре <span class="hint">без адреса и метки, разделитель — «/»</span></label>
+        <input type="text" id="repo" placeholder="monitor-proektov/backend" required>
+        <label for="tag">Метка <span class="hint">latest или 2026.ММ.ДД-коммит</span></label>
+        <input type="text" id="tag" placeholder="latest">
+        <button type="submit" class="btn" id="btn">Загрузить</button>
+      </form>
+    </div>
+  </section>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const msg = (t, cls) => $('msg').innerHTML = `<div class="msg ${cls}">${t}</div>`;
+let enableDelete = false;
 
 async function loadCatalog() {
   try {
     const r = await fetch('/api/catalog');
     if (!r.ok) { msg('Реестр недоступен (код ' + r.status + ')', 'error'); return; }
     const j = await r.json();
+    enableDelete = !!j.enableDelete;
     $('host').textContent = j.registryHost;
-    const tb = $('tbl').querySelector('tbody');
+    $('count').textContent = j.repos.length;
+    const tb = $('tbody');
     tb.innerHTML = '';
     for (const repo of j.repos) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${repo.name}</td><td>${
-        (repo.tags || []).map(t => `<code>${t}</code>`).join(' ')
-      }</td><td><button class="copy" data-repo="${repo.name}">pull</button></td>`;
+      const tags = (repo.tags || []).map(t =>
+        enableDelete
+          ? `<span class="tag link" data-tag="${esc(t)}" data-repo="${esc(repo.name)}" title="Нажмите, чтобы удалить метку">${esc(t)}</span>`
+          : `<span class="tag">${esc(t)}</span>`
+      ).join('');
+      tr.innerHTML = `<td class="repo">${esc(repo.name)}</td><td><div class="tags">${tags || '<span style="color:var(--text-3)">нет меток</span>'}</div></td>`
+        + `<td><button class="copy" data-repo="${esc(repo.name)}">copy pull</button></td>`;
       tb.appendChild(tr);
     }
-    document.querySelectorAll('.copy').forEach(b => b.onclick = async () => {
+    tb.querySelectorAll('.copy').forEach(b => b.onclick = async () => {
       const tag = prompt('Метка для pull:', 'latest');
-      if (tag) await navigator.clipboard.writeText(`docker pull ${j.registryHost}/${b.dataset.repo}:${tag}`);
+      if (tag) { await navigator.clipboard.writeText(`docker pull ${j.registryHost}/${b.dataset.repo}:${tag}`); msg('Команда скопирована', 'ok'); }
     });
+    if (enableDelete) tb.querySelectorAll('.tag.link').forEach(el => el.onclick = () => deleteTag(el.dataset.repo, el.dataset.tag));
     applyFilter();
   } catch (e) { msg('Не удалось опросить реестр: ' + e, 'error'); }
+}
+
+async function deleteTag(repo, tag) {
+  if (!confirm(`Удалить метку «${tag}» у ${repo}?`)) return;
+  if (!confirm('Манифест будет помечен удалённым; место освободит только сборка мусора реестра. Продолжить?')) return;
+  const fd = new FormData();
+  fd.append('repo', repo); fd.append('tag', tag);
+  const r = await fetch('/api/delete', { method: 'POST', body: fd });
+  const j = await r.json();
+  if (j.ok) { msg(j.message, 'ok'); loadCatalog(); }
+  else msg(j.error, 'error');
 }
 
 $('filter').addEventListener('input', applyFilter);
 function applyFilter() {
   const q = $('filter').value.toLowerCase();
-  document.querySelectorAll('#tbl tbody tr').forEach(tr =>
+  document.querySelectorAll('#tbody tr').forEach(tr =>
     tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none');
 }
 
@@ -80,11 +189,11 @@ $('file').addEventListener('change', async () => {
   if (!$('file').files[0]) return;
   const fd = new FormData();
   fd.append('file', $('file').files[0]);
-  msg('Читаю архив…');
+  msg('Читаю архив…', 'info');
   const r = await fetch('/api/inspect', { method: 'POST', body: fd });
   const j = await r.json();
   if (j.error) { $('suggested').classList.add('hidden'); msg(j.error, 'error'); return; }
-  msg('В архиве найдено: ' + j.repoTags.join(', '), 'ok');
+  msg('В архиве найдено: ' + esc(j.repoTags.join(', ')), 'ok');
   if (j.repoTags && j.repoTags.length) {
     const [name, ...tag] = j.repoTags[0].split(':');
     $('repo').value = name;
@@ -94,9 +203,9 @@ $('file').addEventListener('change', async () => {
 
 $('upl').addEventListener('submit', async ev => {
   ev.preventDefault();
-  const btn = ev.target.querySelector('button');
+  const btn = $('btn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Загружаю…';
+  btn.innerHTML = '<span class="spinner"></span>Загружаю…';
   const fd = new FormData();
   fd.append('file', $('file').files[0]);
   fd.append('repo', $('repo').value);
@@ -104,8 +213,8 @@ $('upl').addEventListener('submit', async ev => {
   try {
     const r = await fetch('/api/upload', { method: 'POST', body: fd });
     const j = await r.json();
-    if (j.ok) { msg('✅ ' + j.message, 'ok'); loadCatalog(); }
-    else msg(j.error, 'error');
+    if (j.ok) { msg('Загружено: ' + esc(j.message), 'ok'); loadCatalog(); }
+    else msg(esc(j.error), 'error');
   } catch (e) { msg('Ошибка сети: ' + e, 'error'); }
   btn.disabled = false; btn.textContent = 'Загрузить';
 });
