@@ -31,6 +31,8 @@ async Task<JsonElement?> RegistryGet(string path)
     return JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
 }
 
+IResult Html(string body) => Results.Content(body, "text/html; charset=utf-8");
+
 IResult LoginPage(string? error) => Html(
     "<!doctype html><html lang=ru><meta charset=utf-8><meta name=viewport content='width=device-width, initial-scale=1'>"
     + "<title>Вход — tar2registry</title><style>"
