@@ -179,6 +179,7 @@ app.MapPost("/api/delete", async (HttpContext ctx) =>
 
     var req = new HttpRequestMessage(HttpMethod.Get, $"{registryUrl}/v2/{repo}/manifests/{tag}");
     if (authHeader != null) req.Headers.Authorization = new("Basic", authHeader);
+    req.Headers.Accept.ParseAdd("application/vnd.docker.distribution.manifest.v2+json");
     var resp = await http.SendAsync(req);
     if (!resp.IsSuccessStatusCode) return Results.Json(new { error = "манифест не найден" }, statusCode: 404);
     var digest = resp.Headers.TryGetValues("Docker-Content-Digest", out var vals) ? vals.FirstOrDefault() : null;
