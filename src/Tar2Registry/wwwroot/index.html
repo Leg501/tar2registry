@@ -20,6 +20,7 @@ body{margin:0;background:var(--bg);color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;
   font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
 .wrap{max-width:980px;margin:0 auto;padding:24px 16px 48px}
+.hidden{display:none}
 
 header{display:flex;align-items:center;gap:10px;padding-bottom:16px;border-bottom:1px solid var(--line);margin-bottom:20px;flex-wrap:wrap}
 .octo{width:28px;height:28px;fill:var(--text);flex-shrink:0}
@@ -49,10 +50,12 @@ tbody tr{transition:background .1s}
 tbody tr:hover{background:#131920}
 .repo{font-weight:600;color:var(--blue);white-space:nowrap}
 .tags{display:flex;flex-wrap:wrap;gap:6px}
-.tag{display:inline-block;padding:0 8px;border-radius:20px;background:var(--panel-2);border:1px solid var(--line);
-  color:var(--text);font-size:12px;font-variant-numeric:tabular-nums;line-height:20px;transition:border-color .1s}
-.tag.link{cursor:pointer}
-.tag.link:hover{border-color:var(--red);color:var(--red)}
+.tag{display:inline-flex;align-items:center;padding:0 8px;border-radius:20px;background:var(--panel-2);border:1px solid var(--line);
+  color:var(--text);font-size:12px;font-variant-numeric:tabular-nums;line-height:20px;transition:border-color .1s;cursor:pointer}
+.tag:hover{border-color:var(--blue)}
+.tag .del{background:none;border:none;color:var(--text-3);cursor:pointer;font-size:13px;line-height:1;
+  padding:0 0 0 5px;margin:0}
+.tag .del:hover{color:var(--red)}
 .copy{background:var(--btn-gray);border:1px solid var(--line);color:var(--text);font-size:12px;
   font-weight:500;cursor:pointer;padding:4px 10px;border-radius:var(--radius)}
 .copy:hover{background:var(--btn-gray-hover);border-color:var(--line-strong,#8b949e)}
@@ -83,9 +86,11 @@ input[type=file]::file-selector-button:hover{background:var(--btn-gray-hover)}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--accent-text);
   border-top-color:transparent;border-radius:50%;animation:r 1s linear infinite;vertical-align:-2px;margin-right:6px}
 @keyframes r{to{transform:rotate(360deg)}}
+.progress{height:4px;background:var(--panel-2);border-radius:2px;margin-top:12px;overflow:hidden}
+.progress>div{height:100%;width:0;background:var(--accent);transition:width .2s}
 
 @media (max-width:640px){th:nth-child(3),td:nth-child(3){display:none}}
-@media (prefers-reduced-motion:reduce){.spinner{animation:none}tbody tr{transition:none}}
+@media (prefers-reduced-motion:reduce){.spinner{animation:none}tbody tr{transition:none}.progress>div{transition:none}}
 </style>
 </head>
 <body>
@@ -131,6 +136,7 @@ input[type=file]::file-selector-button:hover{background:var(--btn-gray-hover)}
         <label for="tag">Метка <span class="hint">latest или 2026.ММ.ДД-коммит</span></label>
         <input type="text" id="tag" placeholder="latest">
         <button type="submit" class="btn" id="btn">Загрузить</button>
+        <div class="progress hidden" id="prog"><div id="progbar"></div></div>
       </form>
     </div>
   </section>
@@ -138,9 +144,40 @@ input[type=file]::file-selector-button:hover{background:var(--btn-gray-hover)}
 
 <script>
 const $ = id => document.getElementById(id);
-const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const msg = (t, cls) => $('msg').innerHTML = `<div class="msg ${cls}">${t}</div>`;
 let enableDelete = false;
+let registryHost = '';
+
+// clipboard API недоступен на http вне localhost — запасной путь
+async function copyText(t) {
+  if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(t); return; }
+  const ta = document.createElement('textarea');
+  ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+}
+
+async function copyPull(repo, tag) {
+  const cmd = `docker pull ${registryHost}/${repo}${tag ? ':' + tag : ''}`;
+  try { await copyText(cmd); msg('Скопировано: <code>' + esc(cmd) + '</code>', 'ok'); }
+  catch (e) { msg('Не удалось скопировать: ' + esc(e.message || e), 'error'); }
+}
+
+// POST с прогрессом отправки (fetch его не умеет)
+function xhrPost(url, fd, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
+    xhr.onload = () => {
+      try { resolve(JSON.parse(xhr.responseText)); }
+      catch { reject(new Error('HTTP ' + xhr.status)); }
+    };
+    xhr.onerror = () => reject(new Error('ошибка сети'));
+    xhr.send(fd);
+  });
+}
 
 async function loadCatalog() {
   try {
@@ -148,80 +185,101 @@ async function loadCatalog() {
     if (!r.ok) { msg('Реестр недоступен (код ' + r.status + ')', 'error'); return; }
     const j = await r.json();
     enableDelete = !!j.enableDelete;
+    registryHost = j.registryHost;
     $('host').textContent = j.registryHost;
     $('count').textContent = j.repos.length;
     const tb = $('tbody');
     tb.innerHTML = '';
+    if (!j.repos.length) {
+      tb.innerHTML = '<tr><td colspan="3" style="color:var(--text-3)">Реестр пуст — загрузите первый tar ниже</td></tr>';
+      return;
+    }
     for (const repo of j.repos) {
       const tr = document.createElement('tr');
-      const tags = (repo.tags || []).map(t =>
-        enableDelete
-          ? `<span class="tag link" data-tag="${esc(t)}" data-repo="${esc(repo.name)}" title="Нажмите, чтобы удалить метку">${esc(t)}</span>`
-          : `<span class="tag">${esc(t)}</span>`
-      ).join('');
+      tr.dataset.search = (repo.name + ' ' + (repo.tags || []).join(' ')).toLowerCase();
+      const tags = (repo.tags || []).map(t => {
+        const del = enableDelete
+          ? `<button class="del" data-repo="${esc(repo.name)}" data-tag="${esc(t)}" title="Удалить метку">×</button>`
+          : '';
+        return `<span class="tag" data-repo="${esc(repo.name)}" data-tag="${esc(t)}" title="Скопировать docker pull">${esc(t)}${del}</span>`;
+      }).join('');
       tr.innerHTML = `<td class="repo">${esc(repo.name)}</td><td><div class="tags">${tags || '<span style="color:var(--text-3)">нет меток</span>'}</div></td>`
-        + `<td><button class="copy" data-repo="${esc(repo.name)}">copy pull</button></td>`;
+        + `<td><button class="copy" data-repo="${esc(repo.name)}" title="Скопировать docker pull (latest)">copy pull</button></td>`;
       tb.appendChild(tr);
     }
-    tb.querySelectorAll('.copy').forEach(b => b.onclick = async () => {
-      const tag = prompt('Метка для pull:', 'latest');
-      if (tag) { await navigator.clipboard.writeText(`docker pull ${j.registryHost}/${b.dataset.repo}:${tag}`); msg('Команда скопирована', 'ok'); }
-    });
-    if (enableDelete) tb.querySelectorAll('.tag.link').forEach(el => el.onclick = () => deleteTag(el.dataset.repo, el.dataset.tag));
+    tb.querySelectorAll('.copy').forEach(b => b.onclick = () => copyPull(b.dataset.repo, ''));
+    tb.querySelectorAll('.tag').forEach(el => el.onclick = () => copyPull(el.dataset.repo, el.dataset.tag));
+    tb.querySelectorAll('.del').forEach(b => b.onclick = ev => { ev.stopPropagation(); deleteTag(b.dataset.repo, b.dataset.tag); });
     applyFilter();
-  } catch (e) { msg('Не удалось опросить реестр: ' + e, 'error'); }
+  } catch (e) { msg('Не удалось опросить реестр: ' + esc(e.message || e), 'error'); }
 }
 
 async function deleteTag(repo, tag) {
-  if (!confirm(`Удалить метку «${tag}» у ${repo}?`)) return;
-  if (!confirm('Манифест будет помечен удалённым; место освободит только сборка мусора реестра. Продолжить?')) return;
+  if (!confirm(`Удалить метку «${tag}» у ${repo}?\nМанифест будет помечен удалённым; место освободит только сборка мусора реестра.`)) return;
   const fd = new FormData();
   fd.append('repo', repo); fd.append('tag', tag);
-  const r = await fetch('/api/delete', { method: 'POST', body: fd });
-  const j = await r.json();
-  if (j.ok) { msg(j.message, 'ok'); loadCatalog(); }
-  else msg(j.error, 'error');
+  try {
+    const r = await fetch('/api/delete', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (j.ok) { msg(esc(j.message), 'ok'); loadCatalog(); }
+    else msg(esc(j.error || 'ошибка удаления'), 'error');
+  } catch (e) { msg('Ошибка сети: ' + esc(e.message || e), 'error'); }
 }
 
 $('filter').addEventListener('input', applyFilter);
 function applyFilter() {
   const q = $('filter').value.toLowerCase();
   document.querySelectorAll('#tbody tr').forEach(tr =>
-    tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none');
+    tr.style.display = (tr.dataset.search || '').includes(q) ? '' : 'none');
 }
 
 $('file').addEventListener('change', async () => {
-  if (!$('file').files[0]) return;
+  const f = $('file').files[0];
+  $('suggested').classList.add('hidden');
+  if (!f) return;
   const fd = new FormData();
-  fd.append('file', $('file').files[0]);
-  msg('Читаю архив…', 'info');
-  const r = await fetch('/api/inspect', { method: 'POST', body: fd });
-  const j = await r.json();
-  if (j.error) { $('suggested').classList.add('hidden'); msg(j.error, 'error'); return; }
-  msg('В архиве найдено: ' + esc(j.repoTags.join(', ')), 'ok');
-  if (j.repoTags && j.repoTags.length) {
-    const [name, ...tag] = j.repoTags[0].split(':');
-    $('repo').value = name;
-    if (tag.length) $('tag').value = tag.join(':');
-  }
+  fd.append('file', f);
+  msg('Читаю архив… <span id="inspct"></span>', 'info');
+  try {
+    const j = await xhrPost('/api/inspect', fd, p => {
+      const el = $('inspct'); if (el) el.textContent = Math.round(p * 100) + '%';
+    });
+    if (j.error) { msg(esc(j.error), 'error'); return; }
+    $('msg').innerHTML = '';
+    if (j.repoTags && j.repoTags.length) {
+      $('found').textContent = j.repoTags.join(', ');
+      $('suggested').classList.remove('hidden');
+      const [name, ...tag] = j.repoTags[0].split(':');
+      $('repo').value = name;
+      $('tag').value = tag.length ? tag.join(':') : 'latest';
+    } else {
+      msg('manifest.json найден, но RepoTags пуст — укажите путь и метку вручную', 'info');
+    }
+  } catch (e) { msg('Не удалось прочитать архив: ' + esc(e.message || e), 'error'); }
 });
 
 $('upl').addEventListener('submit', async ev => {
   ev.preventDefault();
-  const btn = $('btn');
+  const btn = $('btn'), prog = $('prog'), bar = $('progbar');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>Загружаю…';
+  btn.innerHTML = '<span class="spinner"></span>Загружаю… 0%';
+  prog.classList.remove('hidden'); bar.style.width = '0%';
   const fd = new FormData();
   fd.append('file', $('file').files[0]);
   fd.append('repo', $('repo').value);
   fd.append('tag', $('tag').value);
   try {
-    const r = await fetch('/api/upload', { method: 'POST', body: fd });
-    const j = await r.json();
+    const j = await xhrPost('/api/upload', fd, p => {
+      bar.style.width = Math.round(p * 100) + '%';
+      btn.innerHTML = p < 1
+        ? `<span class="spinner"></span>Загружаю… ${Math.round(p * 100)}%`
+        : '<span class="spinner"></span>Пушу в реестр…';
+    });
     if (j.ok) { msg('Загружено: ' + esc(j.message), 'ok'); loadCatalog(); }
-    else msg(esc(j.error), 'error');
-  } catch (e) { msg('Ошибка сети: ' + e, 'error'); }
+    else msg(esc(j.error || 'неизвестная ошибка'), 'error');
+  } catch (e) { msg('Ошибка сети: ' + esc(e.message || e), 'error'); }
   btn.disabled = false; btn.textContent = 'Загрузить';
+  prog.classList.add('hidden');
 });
 
 loadCatalog();

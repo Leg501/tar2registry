@@ -8,11 +8,11 @@ A simple web UI for a private Docker registry (Registry v2): **a browsable catal
 
 ## Возможности
 
-- **Витрина**: список репозиториев и меток, живой фильтр по имени/метке, кнопка «copy pull».
-- **Загрузка tar**: выбираете файл — сервер читает `manifest.json` из архива и подсказывает имя и метку; грузит в реестр через `skopeo copy docker-archive:` (Docker-демон не нужен).
-- **Пароль на вход** (опционально), кредиты реестра только через переменные окружения.
-- **Удаление меток** — по флагу, по умолчанию выключено.
-- Всё на русском, один маленький контейнер (.NET 8 + skopeo).
+- **Витрина**: список репозиториев и меток (с пагинацией реестра), живой фильтр по имени/метке; клик по метке копирует `docker pull`.
+- **Загрузка tar**: выбираете файл — сервер читает `manifest.json` из архива (tar и tar.gz) и подсказывает имя и метку; грузит в реестр через `skopeo copy docker-archive:` (Docker-демон не нужен). Прогресс отправки в процентах.
+- **Пароль на вход** (опционально, с защитой от перебора), кредиты реестра только через переменные окружения.
+- **Удаление меток** — по флагу, по умолчанию выключено (иконка × на метке).
+- Всё на русском, один маленький контейнер (.NET 10 + skopeo, non-root, `/healthz`).
 
 ## Переменные окружения
 
@@ -23,6 +23,9 @@ A simple web UI for a private Docker registry (Registry v2): **a browsable catal
 | `APP_PASSWORD` | пароль входа в UI; пусто = без входа | пусто |
 | `ENABLE_DELETE` | `true` — разрешить удаление меток в UI | `false` |
 | `MAX_UPLOAD_GB` | лимит размера tar | `5` |
+| `REGISTRY_TLS_VERIFY` | `true` — проверять TLS-сертификат реестра (https) | `false` |
+
+Загрузка идёт по одной за раз (tar целиком буферизуется на диск контейнера в `/tmp`); при больших образах вынесите `/tmp` в volume.
 
 ## Запуск
 
@@ -50,8 +53,8 @@ docker build -t tar2registry .
 
 ## Ограничения
 
-- tar должен быть продуктом `docker save` (содержать `manifest.json`); OCI-архивы (`skopeo copy ... oci-archive:`) для загрузки не годятся.
-- Реестр без TLS: `--dest-tls-verify=false`, предполагается внутренняя сеть.
+- tar должен быть продуктом `docker save` (содержать `manifest.json`), допускается gzip-сжатие; OCI-архивы (`skopeo copy ... oci-archive:`) для загрузки не годятся.
+- Реестр без TLS: по умолчанию `--dest-tls-verify=false`, предполагается внутренняя сеть (для https включите `REGISTRY_TLS_VERIFY=true`).
 - Удаление метки помечает манифест удалённым; до сборки мусора в registry место не освободится.
 
 ---
@@ -62,11 +65,11 @@ A lightweight web UI for a private Docker registry (Docker Registry API v2): **a
 
 ## Features
 
-- **Catalog**: repositories and tags with a live filter (by repo or tag name) and a "copy docker pull" button.
-- **Tar upload**: pick a file — the server reads `manifest.json` inside the archive and suggests the repo path and tag; the image is pushed via `skopeo copy docker-archive:` (no Docker daemon required).
-- **Optional password gate** for the UI; registry credentials are supplied only via environment variables.
-- **Tag deletion** behind a flag, disabled by default.
-- One small container: .NET 8 + skopeo. UI is in Russian.
+- **Catalog**: repositories and tags (registry pagination handled), live filter; clicking a tag copies `docker pull`.
+- **Tar upload**: pick a file — the server reads `manifest.json` inside the archive (tar and tar.gz) and suggests the repo path and tag; the image is pushed via `skopeo copy docker-archive:` (no Docker daemon required). Upload progress shown in percent.
+- **Optional password gate** for the UI (with brute-force throttling); registry credentials are supplied only via environment variables.
+- **Tag deletion** behind a flag, disabled by default (× icon on a tag).
+- One small container: .NET 10 + skopeo, non-root, `/healthz`. UI is in Russian.
 
 ## Environment variables
 
@@ -77,6 +80,9 @@ A lightweight web UI for a private Docker registry (Docker Registry API v2): **a
 | `APP_PASSWORD` | UI login password; empty = no login | empty |
 | `ENABLE_DELETE` | `true` to allow deleting tags from the UI | `false` |
 | `MAX_UPLOAD_GB` | upload size limit | `5` |
+| `REGISTRY_TLS_VERIFY` | `true` to verify the registry's TLS certificate (https) | `false` |
+
+Uploads run one at a time (the tar is fully buffered to the container's `/tmp`); mount a volume at `/tmp` for large images.
 
 ## Running
 
@@ -104,6 +110,6 @@ docker build -t tar2registry .
 
 ## Limitations
 
-- The tar must be the output of `docker save` (must contain `manifest.json`); OCI archives (`skopeo copy ... oci-archive:`) are not accepted for upload.
-- Registry over plain HTTP: `--dest-tls-verify=false`, intended for an internal network.
+- The tar must be the output of `docker save` (must contain `manifest.json`); gzip compression is accepted. OCI archives (`skopeo copy ... oci-archive:`) are not accepted for upload.
+- Registry over plain HTTP: `--dest-tls-verify=false` by default, intended for an internal network (set `REGISTRY_TLS_VERIFY=true` for https).
 - Deleting a tag marks the manifest as deleted; disk space is reclaimed only after the registry's garbage collection.

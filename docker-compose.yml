@@ -15,4 +15,9 @@ services:
       # удаление меток из UI (по умолчанию выключено)
       ENABLE_DELETE: "false"
       MAX_UPLOAD_GB: "5"
+      # проверка TLS у реестра (для https-реестра с валидным сертификатом)
+      # REGISTRY_TLS_VERIFY: "true"
+    # tar целиком пишется во временный каталог контейнера — при нехватке места вынесите /tmp:
+    # volumes:
+    #   - ./tmp:/tmp
     # если реестр на хосте: network_mode: host и REGISTRY_URL: http://localhost:5000
