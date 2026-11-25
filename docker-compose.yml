@@ -1,0 +1,18 @@
+services:
+  tar2registry:
+    image: ghcr.io/OWNER/tar2registry:latest
+    container_name: tar2registry
+    restart: unless-stopped
+    ports:
+      - "5001:8000"
+    environment:
+      # адрес реестра (docker-сеть или host-сеть)
+      REGISTRY_URL: http://registry:5000
+      REGISTRY_USER: deploy
+      REGISTRY_PASSWORD: ${REGISTRY_PASSWORD:?пароль реестра из registry-creds.env}
+      # пароль на вход в этот веб-интерфейс; пусто = без пароля (не рекомендуется)
+      APP_PASSWORD: ${APP_PASSWORD:?придумайте пароль}
+      # удаление меток из UI (по умолчанию выключено)
+      ENABLE_DELETE: "false"
+      MAX_UPLOAD_GB: "5"
+    # если реестр на хосте: network_mode: host и REGISTRY_URL: http://localhost:5000

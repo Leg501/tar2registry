@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>tar2registry</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:900px;margin:0 auto;padding:16px;color:#222}
+  table{border-collapse:collapse;width:100%;margin-top:8px}
+  th,td{border:1px solid #ddd;padding:6px 10px;text-align:left;font-size:14px}
+  th{background:#f5f5f5}
+  code{background:#f5f5f5;padding:2px 5px;font-size:13px}
+  input[type=text],input[type=file]{padding:8px;margin:4px 0}
+  #filter{width:100%;box-sizing:border-box}
+  .ok{color:#1e7e34}.error{color:#c0392b}
+  fieldset{margin:24px 0;border:1px solid #ccc;border-radius:6px}
+  legend{font-weight:600;padding:0 8px}
+  .copy{cursor:pointer;color:#0056b3;text-decoration:underline;background:none;border:none;font-size:13px}
+  .msg{margin:8px 0;padding:8px 12px;border-radius:4px;background:#f8f8f8}
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid #999;border-top-color:#222;border-radius:50%;animation:r 1s linear infinite;vertical-align:-2px}
+  @keyframes r{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<h2>Реестр <span id="host">…</span></h2>
+<div id="msg"></div>
+
+<h3>Репозитории</h3>
+<input type="text" id="filter" placeholder="Фильтр: имя репозитория или метка (например, 2026.11)">
+<table id="tbl"><thead><tr><th>Репозиторий</th><th>Метки</th><th>Pull</th></tr></thead><tbody></tbody></table>
+
+<fieldset>
+  <legend>Загрузить tar-образ</legend>
+  <form id="upl">
+    <p><input type="file" id="file" accept=".tar,.tar.gz,.tgz" required></p>
+    <p id="suggested" class="hidden">Найдено в архиве: <code id="found"></code></p>
+    <p>Путь в реестре (без адреса и метки, через «/»):<br>
+      <input type="text" id="repo" placeholder="monitor-proektov/backend" size="50" required></p>
+    <p>Метка:<br><input type="text" id="tag" placeholder="latest или 2026.ММ.ДД-коммит" size="50"></p>
+    <p><button type="submit">Загрузить</button></p>
+  </form>
+</fieldset>
+
+<p><a href="/logout" id="logout">Выйти</a></p>
+
+<script>
+const $ = id => document.getElementById(id);
+const msg = (t, cls) => $('msg').innerHTML = `<div class="msg ${cls}">${t}</div>`;
+
+async function loadCatalog() {
+  try {
+    const r = await fetch('/api/catalog');
+    if (!r.ok) { msg('Реестр недоступен (код ' + r.status + ')', 'error'); return; }
+    const j = await r.json();
+    $('host').textContent = j.registryHost;
+    const tb = $('tbl').querySelector('tbody');
+    tb.innerHTML = '';
+    for (const repo of j.repos) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${repo.name}</td><td>${
+        (repo.tags || []).map(t => `<code>${t}</code>`).join(' ')
+      }</td><td><button class="copy" data-repo="${repo.name}">pull</button></td>`;
+      tb.appendChild(tr);
+    }
+    document.querySelectorAll('.copy').forEach(b => b.onclick = async () => {
+      const tag = prompt('Метка для pull:', 'latest');
+      if (tag) await navigator.clipboard.writeText(`docker pull ${j.registryHost}/${b.dataset.repo}:${tag}`);
+    });
+    applyFilter();
+  } catch (e) { msg('Не удалось опросить реестр: ' + e, 'error'); }
+}
+
+$('filter').addEventListener('input', applyFilter);
+function applyFilter() {
+  const q = $('filter').value.toLowerCase();
+  document.querySelectorAll('#tbl tbody tr').forEach(tr =>
+    tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none');
+}
+
+$('file').addEventListener('change', async () => {
+  if (!$('file').files[0]) return;
+  const fd = new FormData();
+  fd.append('file', $('file').files[0]);
+  msg('Читаю архив…');
+  const r = await fetch('/api/inspect', { method: 'POST', body: fd });
+  const j = await r.json();
+  if (j.error) { $('suggested').classList.add('hidden'); msg(j.error, 'error'); return; }
+  msg('В архиве найдено: ' + j.repoTags.join(', '), 'ok');
+  if (j.repoTags && j.repoTags.length) {
+    const [name, ...tag] = j.repoTags[0].split(':');
+    $('repo').value = name;
+    if (tag.length) $('tag').value = tag.join(':');
+  }
+});
+
+$('upl').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const btn = ev.target.querySelector('button');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Загружаю…';
+  const fd = new FormData();
+  fd.append('file', $('file').files[0]);
+  fd.append('repo', $('repo').value);
+  fd.append('tag', $('tag').value);
+  try {
+    const r = await fetch('/api/upload', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (j.ok) { msg('✅ ' + j.message, 'ok'); loadCatalog(); }
+    else msg(j.error, 'error');
+  } catch (e) { msg('Ошибка сети: ' + e, 'error'); }
+  btn.disabled = false; btn.textContent = 'Загрузить';
+});
+
+loadCatalog();
+</script>
+</body>
+</html>
