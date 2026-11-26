@@ -224,16 +224,21 @@ app.MapPost("/api/upload", async (HttpContext ctx) =>
         var form = await ctx.Request.ReadFormAsync(ctx.RequestAborted);
         var file = form.Files["file"];
         var repo = form["repo"].ToString().Trim().Trim('/');
-        var tag = form["tag"].ToString().Trim();
-        if (string.IsNullOrEmpty(tag)) tag = "latest";
+        // метки через запятую или пробел: "latest, 2026.11.25-faf0f72"
+        var tags = form["tag"].ToString()
+            .Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (tags.Count == 0) tags.Add("latest");
         if (file is null || file.Length == 0 || repo == "")
             return Results.Json(new { error = "нужны файл и путь в реестре" }, statusCode: 400);
         if (file.Length > maxUploadBytes)
             return Results.Json(new { error = $"файл больше {maxUploadGb} ГБ" }, statusCode: 400);
         if (!repoRx.IsMatch(repo))
             return Results.Json(new { error = "некорректный путь в реестре: только строчные буквы, цифры и разделители . _ - /" }, statusCode: 400);
-        if (!tagRx.IsMatch(tag))
-            return Results.Json(new { error = "некорректная метка: буквы, цифры, . _ - до 128 символов" }, statusCode: 400);
+        foreach (var tag in tags)
+            if (!tagRx.IsMatch(tag))
+                return Results.Json(new { error = $"некорректная метка «{tag}»: буквы, цифры, . _ - до 128 символов" }, statusCode: 400);
 
         await using (var fs = File.Create(tmp)) await file.CopyToAsync(fs, ctx.RequestAborted);
 
@@ -247,7 +252,7 @@ app.MapPost("/api/upload", async (HttpContext ctx) =>
             }));
         }
 
-        var dest = $"docker://{registryHost}/{repo}:{tag}";
+        var dest = $"docker://{registryHost}/{repo}:{tags[0]}";
         var psi = new ProcessStartInfo
         {
             FileName = skopeoPath,
@@ -257,6 +262,11 @@ app.MapPost("/api/upload", async (HttpContext ctx) =>
         };
         psi.ArgumentList.Add("copy");
         psi.ArgumentList.Add($"--dest-tls-verify={(registryTlsVerify ? "true" : "false")}");
+        // остальные метки одним проходом, без повторного копирования слоёв
+        foreach (var extra in tags.Skip(1))
+            psi.ArgumentList.Add("--additional-tag");
+        foreach (var extra in tags.Skip(1))
+            psi.ArgumentList.Add(extra);
         if (authFile != null) { psi.ArgumentList.Add("--dest-authfile"); psi.ArgumentList.Add(authFile); }
         psi.ArgumentList.Add("docker-archive:" + tmp);
         psi.ArgumentList.Add(dest);
@@ -274,7 +284,7 @@ app.MapPost("/api/upload", async (HttpContext ctx) =>
         }
         var err = await errTask;
         return p.ExitCode == 0
-            ? Results.Json(new { ok = true, message = $"{repo}:{tag} загружен в реестр" })
+            ? Results.Json(new { ok = true, message = $"{repo}:{string.Join(", ", tags)} загружен в реестр" })
             : Results.Json(new { error = "skopeo: " + err[^Math.Min(err.Length, 800)..] }, statusCode: 500);
     }
     catch (OperationCanceledException) { return Results.StatusCode(499); }

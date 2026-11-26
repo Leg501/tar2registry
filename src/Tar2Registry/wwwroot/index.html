@@ -79,6 +79,38 @@ input[type=file]::file-selector-button{background:var(--btn-gray);color:var(--te
 input[type=file]::file-selector-button:hover{background:var(--btn-gray-hover)}
 .found{font-size:12px;color:var(--text-2);margin:8px 0}
 .found code{background:var(--panel-2);border-radius:6px;padding:2px 6px;color:var(--text)}
+/* путь реестра: адрес хоста показан отдельной «прибитой» частью поля */
+.hostwrap{display:flex;align-items:stretch}
+.hostwrap .hostprefix{display:flex;align-items:center;padding:6px 10px;background:var(--panel-2);
+  border:1px solid var(--line);border-right:none;border-radius:var(--radius) 0 0 var(--radius);
+  color:var(--text-2);font-size:13px;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.hostwrap input[type=text]{border-radius:0 var(--radius) var(--radius) 0}
+/* блоки формы: файл / путь / метки — отдельные «карточки» внутри формы */
+.fgroup{border:1px solid var(--line);border-radius:var(--radius);padding:12px 12px 14px;
+  margin-bottom:12px;background:var(--panel-2)}
+.fgroup label{margin:0 0 6px}
+/* место под чипы архива зарезервировано — форма не «скачет» при появлении меток */
+.foundwrap{min-height:34px;margin:0 0 12px}
+.foundwrap .foundlabel{font-size:12px;color:var(--text-3)}
+.foundwrap .foundlabel.ready{color:var(--text-2)}
+/* ввод меток чипами */
+.chipbox{display:flex;flex-wrap:wrap;gap:6px;padding:5px 6px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--bg)}
+.chipbox:focus-within{outline:2px solid var(--blue);outline-offset:-1px}
+.chipbox input{display:none;flex:1;min-width:80px;border:none;padding:2px 6px;font-size:14px;background:transparent}
+.chipbox input:focus{outline:none}
+.chipbox input.open{display:inline-block}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:0 8px;border-radius:20px;
+  background:var(--panel-2);border:1px solid var(--line);font-size:12px;line-height:20px}
+.chip .del{background:none;border:none;color:var(--text-3);cursor:pointer;font-size:13px;line-height:1;padding:0}
+.chip .del:hover{color:var(--red)}
+.chip.addown{cursor:pointer;color:var(--text-2);border-style:dashed;background:none}
+.chip.addown:hover{color:var(--text);border-color:var(--blue)}
+/* найденные в архиве метки — чипы-подсказки */
+.foundchips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.foundchips .tag{cursor:pointer;font-size:12px}
+.foundchips .tag::before{content:"+";color:var(--green);font-weight:600;margin-right:4px}
+.foundchips .tag.active{opacity:.4;pointer-events:none}
 .btn{margin-top:16px;padding:7px 16px;border:none;border-radius:var(--radius);background:var(--accent);
   color:var(--accent-text);font-size:14px;font-weight:500;cursor:pointer}
 .btn:hover{background:var(--accent-hover)}
@@ -129,12 +161,21 @@ input[type=file]::file-selector-button:hover{background:var(--btn-gray-hover)}
     </div>
     <div class="card-body">
       <form id="upl">
-        <input type="file" id="file" accept=".tar,.tar.gz,.tgz" required>
-        <p class="found hidden" id="suggested">Найдено в архиве: <code id="found"></code></p>
-        <label for="repo">Путь в реестре <span class="hint">без адреса и метки, разделитель — «/»</span></label>
-        <input type="text" id="repo" placeholder="monitor-proektov/backend" required>
-        <label for="tag">Метка <span class="hint">latest или 2026.ММ.ДД-коммит</span></label>
-        <input type="text" id="tag" placeholder="latest">
+        <div class="fgroup">
+          <label for="file">Файл tar</label>
+          <input type="file" id="file" accept=".tar,.tar.gz,.tgz" required>
+        </div>
+        <p class="foundwrap" id="foundwrap">
+          <span class="foundlabel" id="foundlabel">Метки в архиве — появятся после чтения архива</span>
+          <span class="foundchips" id="foundchips"></span>
+        </p>
+        <div class="fgroup">
+          <label for="repo">Путь в реестре <span class="hint">без адреса и метки; разделитель папок — «/», не «-»</span></label>
+          <div class="hostwrap"><span class="hostprefix" id="hostprefix">реестр/</span><input type="text" id="repo" placeholder="monitor-proektov/backend" required></div>
+          <label style="margin-top:12px">Метки <span class="hint">через Enter или запятую; например latest и 2026.ММ.ДД-коммит</span></label>
+          <div class="chipbox" id="chipbox"><button type="button" class="chip addown" id="addown" title="Ввести свою метку">+ своя метка</button><input type="text" id="taginput"></div>
+        </div>
+        <input type="hidden" id="tag">
         <button type="submit" class="btn" id="btn">Загрузить</button>
         <div class="progress hidden" id="prog"><div id="progbar"></div></div>
       </form>
@@ -235,8 +276,12 @@ function applyFilter() {
 
 $('file').addEventListener('change', async () => {
   const f = $('file').files[0];
-  $('suggested').classList.add('hidden');
+  $('foundchips').innerHTML = '';
+  $('foundlabel').textContent = 'Читаю архив…';
+  $('foundlabel').classList.remove('ready');
   if (!f) return;
+  // на время чтения архива закрыть выбор файла и кнопку загрузки
+  $('file').disabled = true; $('btn').disabled = true;
   const fd = new FormData();
   fd.append('file', f);
   msg('Читаю архив… <span id="inspct"></span>', 'info');
@@ -246,22 +291,111 @@ $('file').addEventListener('change', async () => {
     });
     if (j.error) { msg(esc(j.error), 'error'); return; }
     $('msg').innerHTML = '';
+    const fc = $('foundchips'); fc.innerHTML = '';
     if (j.repoTags && j.repoTags.length) {
-      $('found').textContent = j.repoTags.join(', ');
-      $('suggested').classList.remove('hidden');
-      const [name, ...tag] = j.repoTags[0].split(':');
-      $('repo').value = name;
-      $('tag').value = tag.length ? tag.join(':') : 'latest';
+      for (const rt of j.repoTags) {
+        const [name, ...tag] = rt.split(':');
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'tag';
+        b.title = 'Добавить в метки: ' + rt;
+        b.textContent = rt;
+        b.onclick = () => {
+          if (!$('repo').value) $('repo').value = name;
+          addTag(tag.length ? tag.join(':') : 'latest');
+          b.classList.add('active');
+        };
+        fc.appendChild(b);
+      }
+      // путь всегда берём из архива — так разделитель точно «/», а не «-»
+      const [firstName] = j.repoTags[0].split(':');
+      $('repo').value = firstName;
+      $('foundlabel').textContent = 'Метки в архиве — нажмите, чтобы добавить:';
+      $('foundlabel').classList.add('ready');
+      $('foundwrap').classList.remove('hidden');
     } else {
-      msg('manifest.json найден, но RepoTags пуст — укажите путь и метку вручную', 'info');
+      $('foundlabel').textContent = 'Метки в архиве не найдены — укажите путь и метки ниже вручную';
+      $('foundlabel').classList.add('ready');
     }
-  } catch (e) { msg('Не удалось прочитать архив: ' + esc(e.message || e), 'error'); }
+  } catch (e) {
+    $('foundlabel').textContent = 'Не удалось прочитать архив: ' + (e.message || e);
+    msg('Не удалось прочитать архив: ' + esc(e.message || e), 'error');
+  } finally {
+    $('file').disabled = false; $('btn').disabled = false;
+  }
 });
+
+// ——— метки чипами ———
+let selectedTags = [];
+const tagRxJs = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
+
+function renderTags() {
+  const box = $('chipbox');
+  box.querySelectorAll('.chip:not(.addown)').forEach(el => el.remove());
+  for (const t of selectedTags) {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.innerHTML = `<span>${esc(t)}</span><button type="button" class="del" title="Убрать метку">×</button>`;
+    chip.querySelector('.del').onclick = () => {
+      selectedTags = selectedTags.filter(x => x !== t);
+      renderTags();
+      syncFoundChips();
+    };
+    box.appendChild(chip);
+  }
+  // «+ своя метка» держим сразу после последнего чипа, поле ввода — в конце
+  box.appendChild($('addown'));
+  box.appendChild($('taginput'));
+  $('tag').value = selectedTags.join(',');
+}
+
+function addTag(t) {
+  t = t.trim().replace(/^:+|:+$/g, '');
+  if (!t || !tagRxJs.test(t)) return false;
+  if (!selectedTags.includes(t)) { selectedTags.push(t); renderTags(); }
+  syncFoundChips();
+  return true;
+}
+
+function syncFoundChips() {
+  document.querySelectorAll('#foundchips .tag').forEach(b => {
+    const rt = b.textContent;
+    const t = rt.includes(':') ? rt.split(':')[1] : rt;
+    b.classList.toggle('active', selectedTags.includes(t));
+  });
+}
+
+$('taginput').addEventListener('keydown', ev => {
+  if (ev.key === 'Enter' || ev.key === ',') {
+    ev.preventDefault();
+    if (addTag($('taginput').value)) { $('taginput').value = ''; $('taginput').classList.remove('open'); }
+  } else if (ev.key === 'Backspace' && !$('taginput').value && selectedTags.length) {
+    selectedTags.pop(); renderTags();
+  } else if (ev.key === 'Escape') {
+    $('taginput').value = ''; $('taginput').classList.remove('open');
+  }
+});
+$('taginput').addEventListener('blur', () => {
+  addTag($('taginput').value); $('taginput').value = ''; $('taginput').classList.remove('open');
+});
+$('addown').addEventListener('click', () => { $('taginput').classList.add('open'); $('taginput').focus(); });
 
 $('upl').addEventListener('submit', async ev => {
   ev.preventDefault();
+  // страховка: путь без «/» при найденном из архива пути со «/» — поправить (типичная ошибка «-» вместо «/»)
+  const firstFound = $('foundchips').firstElementChild;
+  if (firstFound && firstFound.textContent.includes(':')) {
+    const nameFromArchive = firstFound.textContent.split(':')[0];
+    if ($('repo').value && !$('repo').value.includes('/') && nameFromArchive.includes('/')) {
+      $('repo').value = nameFromArchive;
+      msg('Путь в реестре поправлен на путь из архива: <code>' + esc(nameFromArchive) + '</code>', 'info');
+    }
+  }
   const btn = $('btn'), prog = $('prog'), bar = $('progbar');
+  // незавершённый ввод в поле метки — добавить перед отправкой
+  addTag($('taginput').value); $('taginput').value = '';
   btn.disabled = true;
+  $('file').disabled = true; // пока идёт загрузка, файл менять нельзя
   btn.innerHTML = '<span class="spinner"></span>Загружаю… 0%';
   prog.classList.remove('hidden'); bar.style.width = '0%';
   const fd = new FormData();
@@ -279,6 +413,7 @@ $('upl').addEventListener('submit', async ev => {
     else msg(esc(j.error || 'неизвестная ошибка'), 'error');
   } catch (e) { msg('Ошибка сети: ' + esc(e.message || e), 'error'); }
   btn.disabled = false; btn.textContent = 'Загрузить';
+  $('file').disabled = false;
   prog.classList.add('hidden');
 });
 
