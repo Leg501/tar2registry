@@ -49,6 +49,10 @@ tbody tr:last-child td{border-bottom:none}
 tbody tr{transition:background .1s}
 tbody tr:hover{background:#131920}
 .repo{font-weight:600;color:var(--blue);white-space:nowrap}
+.repocell{display:flex;align-items:center;gap:6px}
+.usepath{background:none;border:1px solid var(--line);color:var(--text-2);cursor:pointer;
+  font-size:11px;line-height:1;padding:2px 5px;border-radius:4px}
+.usepath:hover{color:var(--blue);border-color:var(--blue)}
 .tags{display:flex;flex-wrap:wrap;gap:6px}
 .tag{display:inline-flex;align-items:center;padding:0 8px;border-radius:20px;background:var(--panel-2);border:1px solid var(--line);
   color:var(--text);font-size:12px;font-variant-numeric:tabular-nums;line-height:20px;transition:border-color .1s;cursor:pointer}
@@ -246,11 +250,16 @@ async function loadCatalog() {
           : '';
         return `<span class="tag" data-repo="${esc(repo.name)}" data-tag="${esc(t)}" title="Скопировать docker pull">${esc(t)}${del}</span>`;
       }).join('');
-      tr.innerHTML = `<td class="repo">${esc(repo.name)}</td><td><div class="tags">${tags || '<span style="color:var(--text-3)">нет меток</span>'}</div></td>`
+      tr.innerHTML = `<td class="repo"><span class="repocell">${esc(repo.name)}<button type="button" class="usepath" data-repo="${esc(repo.name)}" title="Подставить этот путь в форму загрузки">↓</button></span></td><td><div class="tags">${tags || '<span style="color:var(--text-3)">нет меток</span>'}</div></td>`
         + `<td><button class="copy" data-repo="${esc(repo.name)}" title="Скопировать docker pull (latest)">copy pull</button></td>`;
       tb.appendChild(tr);
     }
     tb.querySelectorAll('.copy').forEach(b => b.onclick = () => copyPull(b.dataset.repo, ''));
+    tb.querySelectorAll('.usepath').forEach(b => b.onclick = () => {
+      $('repo').value = b.dataset.repo;
+      $('repo').focus();
+      $('repo').scrollIntoView({block: 'center', behavior: 'smooth'});
+    });
     tb.querySelectorAll('.tag').forEach(el => el.onclick = () => copyPull(el.dataset.repo, el.dataset.tag));
     tb.querySelectorAll('.del').forEach(b => b.onclick = ev => { ev.stopPropagation(); deleteTag(b.dataset.repo, b.dataset.tag); });
     applyFilter();
