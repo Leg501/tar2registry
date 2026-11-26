@@ -252,7 +252,6 @@ app.MapPost("/api/upload", async (HttpContext ctx) =>
             }));
         }
 
-        var dest = $"docker://{registryHost}/{repo}:{tags[0]}";
         var psi = new ProcessStartInfo
         {
             FileName = skopeoPath,
@@ -262,32 +261,32 @@ app.MapPost("/api/upload", async (HttpContext ctx) =>
         };
         psi.ArgumentList.Add("copy");
         psi.ArgumentList.Add($"--dest-tls-verify={(registryTlsVerify ? "true" : "false")}");
-        // остальные метки одним проходом, без повторного копирования слоёв;
-        // skopeo требует для --additional-tag полный референс host/repo:tag
-        foreach (var extra in tags.Skip(1))
-        {
-            psi.ArgumentList.Add("--additional-tag");
-            psi.ArgumentList.Add($"{registryHost}/{repo}:{extra}");
-        }
         if (authFile != null) { psi.ArgumentList.Add("--dest-authfile"); psi.ArgumentList.Add(authFile); }
-        psi.ArgumentList.Add("docker-archive:" + tmp);
-        psi.ArgumentList.Add(dest);
-        using var p = Process.Start(psi)!;
-        // читать stderr параллельно с ожиданием, иначе буфер pipe переполнится и процесс зависнет
-        var errTask = p.StandardError.ReadToEndAsync();
-        try
+        // skopeo 1.20 при пуше в реестр молча игнорирует --additional-tag, поэтому
+        // каждая метка — отдельный copy из того же tar: после первой загрузки
+        // слои уже в реестре, остальные копии заливают только конфиг и манифесты
+        foreach (var tag in tags)
         {
-            await p.WaitForExitAsync(ctx.RequestAborted);
+            psi.ArgumentList.Add("docker-archive:" + tmp);
+            psi.ArgumentList.Add($"docker://{registryHost}/{repo}:{tag}");
+            using var p = Process.Start(psi)!;
+            // читать stderr параллельно с ожиданием, иначе буфер pipe переполнится и процесс зависнет
+            var errTask = p.StandardError.ReadToEndAsync();
+            try
+            {
+                await p.WaitForExitAsync(ctx.RequestAborted);
+            }
+            catch (OperationCanceledException)
+            {
+                try { if (!p.HasExited) p.Kill(entireProcessTree: true); } catch { }
+                throw;
+            }
+            var err = await errTask;
+            if (p.ExitCode != 0)
+                return Results.Json(new { error = $"skopeo ({repo}:{tag}): " + err[^Math.Min(err.Length, 800)..] }, statusCode: 500);
+            psi.ArgumentList.RemoveRange(psi.ArgumentList.Count - 2, 2); // убрать source/dest этой итерации
         }
-        catch (OperationCanceledException)
-        {
-            try { if (!p.HasExited) p.Kill(entireProcessTree: true); } catch { }
-            throw;
-        }
-        var err = await errTask;
-        return p.ExitCode == 0
-            ? Results.Json(new { ok = true, message = $"{repo}:{string.Join(", ", tags)} загружен в реестр" })
-            : Results.Json(new { error = "skopeo: " + err[^Math.Min(err.Length, 800)..] }, statusCode: 500);
+        return Results.Json(new { ok = true, message = $"{repo}:{string.Join(", ", tags)} загружен в реестр" });
     }
     catch (OperationCanceledException) { return Results.StatusCode(499); }
     catch (Exception ex)
