@@ -252,21 +252,18 @@ app.MapPost("/api/upload", async (HttpContext ctx) =>
             }));
         }
 
-        var psi = new ProcessStartInfo
-        {
-            FileName = skopeoPath,
-            UseShellExecute = false,
-            RedirectStandardError = true,
-            RedirectStandardOutput = false, // stdout skopeo идёт в лог контейнера
-        };
-        psi.ArgumentList.Add("copy");
-        psi.ArgumentList.Add($"--dest-tls-verify={(registryTlsVerify ? "true" : "false")}");
-        if (authFile != null) { psi.ArgumentList.Add("--dest-authfile"); psi.ArgumentList.Add(authFile); }
-        // skopeo 1.20 при пуше в реестр молча игнорирует --additional-tag, поэтому
-        // каждая метка — отдельный copy из того же tar: после первой загрузки
-        // слои уже в реестре, остальные копии заливают только конфиг и манифесты
         foreach (var tag in tags)
         {
+            var psi = new ProcessStartInfo
+            {
+                FileName = skopeoPath,
+                UseShellExecute = false,
+                RedirectStandardError = true,
+                RedirectStandardOutput = false, // stdout skopeo идёт в лог контейнера
+            };
+            psi.ArgumentList.Add("copy");
+            psi.ArgumentList.Add($"--dest-tls-verify={(registryTlsVerify ? "true" : "false")}");
+            if (authFile != null) { psi.ArgumentList.Add("--dest-authfile"); psi.ArgumentList.Add(authFile); }
             psi.ArgumentList.Add("docker-archive:" + tmp);
             psi.ArgumentList.Add($"docker://{registryHost}/{repo}:{tag}");
             using var p = Process.Start(psi)!;
@@ -284,7 +281,6 @@ app.MapPost("/api/upload", async (HttpContext ctx) =>
             var err = await errTask;
             if (p.ExitCode != 0)
                 return Results.Json(new { error = $"skopeo ({repo}:{tag}): " + err[^Math.Min(err.Length, 800)..] }, statusCode: 500);
-            psi.ArgumentList.RemoveRange(psi.ArgumentList.Count - 2, 2); // убрать source/dest этой итерации
         }
         return Results.Json(new { ok = true, message = $"{repo}:{string.Join(", ", tags)} загружен в реестр" });
     }
