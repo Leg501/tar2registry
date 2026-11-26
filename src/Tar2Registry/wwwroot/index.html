@@ -77,6 +77,8 @@ input[type=file]{color:var(--text-2);width:100%;font-size:13px}
 input[type=file]::file-selector-button{background:var(--btn-gray);color:var(--text);border:1px solid var(--line);
   border-radius:var(--radius);padding:5px 12px;margin-right:12px;cursor:pointer;font-size:13px;font-weight:500}
 input[type=file]::file-selector-button:hover{background:var(--btn-gray-hover)}
+input[type=file]:disabled::file-selector-button{opacity:.55;cursor:not-allowed}
+input[type=file]:disabled::file-selector-button:hover{background:var(--btn-gray)}
 .found{font-size:12px;color:var(--text-2);margin:8px 0}
 .found code{background:var(--panel-2);border-radius:6px;padding:2px 6px;color:var(--text)}
 /* путь реестра: адрес хоста показан отдельной «прибитой» частью поля */
@@ -281,7 +283,7 @@ $('file').addEventListener('change', async () => {
   $('foundlabel').classList.remove('ready');
   if (!f) return;
   // на время чтения архива закрыть выбор файла и кнопку загрузки
-  $('file').disabled = true; $('btn').disabled = true;
+  lockForm(true);
   const fd = new FormData();
   fd.append('file', f);
   msg('Читаю архив… <span id="inspct"></span>', 'info');
@@ -321,9 +323,18 @@ $('file').addEventListener('change', async () => {
     $('foundlabel').textContent = 'Не удалось прочитать архив: ' + (e.message || e);
     msg('Не удалось прочитать архив: ' + esc(e.message || e), 'error');
   } finally {
-    $('file').disabled = false; $('btn').disabled = false;
+    lockForm(false);
   }
 });
+
+// форма занята, пока читается архив ИЛИ идёт загрузка — блокировка общая
+let busyCount = 0;
+function lockForm(on) {
+  busyCount += on ? 1 : -1;
+  if (busyCount < 0) busyCount = 0;
+  $('file').disabled = busyCount > 0;
+  $('btn').disabled = busyCount > 0;
+}
 
 // ——— метки чипами ———
 let selectedTags = [];
@@ -396,6 +407,7 @@ $('upl').addEventListener('submit', async ev => {
   addTag($('taginput').value); $('taginput').value = '';
   btn.disabled = true;
   $('file').disabled = true; // пока идёт загрузка, файл менять нельзя
+  busyCount = 1; // отсюда до конца — «занято» именно загрузкой
   btn.innerHTML = '<span class="spinner"></span>Загружаю… 0%';
   prog.classList.remove('hidden'); bar.style.width = '0%';
   const fd = new FormData();
@@ -412,6 +424,7 @@ $('upl').addEventListener('submit', async ev => {
     if (j.ok) { msg('Загружено: ' + esc(j.message), 'ok'); loadCatalog(); }
     else msg(esc(j.error || 'неизвестная ошибка'), 'error');
   } catch (e) { msg('Ошибка сети: ' + esc(e.message || e), 'error'); }
+  busyCount = 0;
   btn.disabled = false; btn.textContent = 'Загрузить';
   $('file').disabled = false;
   prog.classList.add('hidden');
