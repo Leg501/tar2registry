@@ -224,7 +224,7 @@ function xhrPost(url, fd, onProgress) {
 
 async function loadCatalog() {
   try {
-    const r = await fetch('/api/catalog');
+    const r = await fetch('/api/catalog', {cache: 'no-store'});
     if (!r.ok) { msg('Реестр недоступен (код ' + r.status + ')', 'error'); return; }
     const j = await r.json();
     enableDelete = !!j.enableDelete;
@@ -421,7 +421,17 @@ $('upl').addEventListener('submit', async ev => {
         ? `<span class="spinner"></span>Загружаю… ${Math.round(p * 100)}%`
         : '<span class="spinner"></span>Пушу в реестр…';
     });
-    if (j.ok) { msg('Загружено: ' + esc(j.message), 'ok'); loadCatalog(); }
+    if (j.ok) {
+      msg('Загружено: ' + esc(j.message), 'ok');
+      // чистим форму, чтобы случайно не загрузить тот же образ второй раз
+      $('file').value = '';
+      $('repo').value = '';
+      selectedTags = []; renderTags();
+      $('foundchips').innerHTML = '';
+      $('foundlabel').textContent = 'Метки в архиве — появятся после чтения архива';
+      $('foundlabel').classList.remove('ready');
+      loadCatalog();
+    }
     else msg(esc(j.error || 'неизвестная ошибка'), 'error');
   } catch (e) { msg('Ошибка сети: ' + esc(e.message || e), 'error'); }
   busyCount = 0;
