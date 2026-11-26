@@ -262,11 +262,13 @@ app.MapPost("/api/upload", async (HttpContext ctx) =>
         };
         psi.ArgumentList.Add("copy");
         psi.ArgumentList.Add($"--dest-tls-verify={(registryTlsVerify ? "true" : "false")}");
-        // остальные метки одним проходом, без повторного копирования слоёв
+        // остальные метки одним проходом, без повторного копирования слоёв;
+        // skopeo требует для --additional-tag полный референс host/repo:tag
         foreach (var extra in tags.Skip(1))
+        {
             psi.ArgumentList.Add("--additional-tag");
-        foreach (var extra in tags.Skip(1))
-            psi.ArgumentList.Add(extra);
+            psi.ArgumentList.Add($"{registryHost}/{repo}:{extra}");
+        }
         if (authFile != null) { psi.ArgumentList.Add("--dest-authfile"); psi.ArgumentList.Add(authFile); }
         psi.ArgumentList.Add("docker-archive:" + tmp);
         psi.ArgumentList.Add(dest);
